@@ -1,0 +1,6 @@
+{
+  "name": "Ricoh Workshop Portal",
+  "description": "An inventory management portal for a Ricoh photocopier workshop, providing role-based access for engineers and admins to manage parts, toners, and devices.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
