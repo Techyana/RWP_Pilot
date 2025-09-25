@@ -1,34 +1,40 @@
-// services/api/deviceApi.ts
+// src/services/api/deviceApi.ts
 
-import { request } from '../http'
+import { get, post, del } from '../http'
 import { devices, simulateDelay } from '../mockDb'
-import { Device, DeviceCondition, DeviceStatus } from '../../types'
+import type { Device } from '../../types'
+import { DeviceCondition, DeviceStatus } from '../../types'
 
 const live = import.meta.env.VITE_API_MODE === 'live'
 
 export const deviceApi = {
+  /**
+   * Fetch all devices
+   */
   getDevices: async (): Promise<Device[]> => {
     if (!live) {
       return simulateDelay(devices)
     }
-
     try {
-      return await request<Device[]>('/devices')
+      return await get<Device[]>('/devices')
     } catch (err) {
       console.warn('[deviceApi] GET /devices failed, returning empty list', err)
       return []
     }
   },
 
+  /**
+   * Add a new device
+   */
   addDevice: async (
-    deviceData: Omit<
+    data: Omit<
       Device,
       'id' | 'status' | 'customerName' | 'condition' | 'comments' | 'strippedParts'
     >
   ): Promise<Device> => {
     if (!live) {
       const newDevice: Device = {
-        ...deviceData,
+        ...data,
         id: `device-${Date.now()}`,
         status: DeviceStatus.APPROVED_FOR_DISPOSAL,
         customerName: 'Unknown',
@@ -40,13 +46,16 @@ export const deviceApi = {
       return simulateDelay(newDevice)
     }
 
-    return request<Device>('/devices', {
-      method: 'POST',
-      body: JSON.stringify(deviceData),
-    })
+    return post<Device>('/devices', data)
   },
 
-  deleteDevice: async (deviceId: string, reason: string): Promise<Device> => {
+  /**
+   * Delete (remove) a device
+   */
+  deleteDevice: async (
+    deviceId: string,
+    reason: string
+  ): Promise<Device> => {
     if (!live) {
       const idx = devices.findIndex((d) => d.id === deviceId)
       if (idx === -1) throw new Error('Device not found')
@@ -58,8 +67,7 @@ export const deviceApi = {
       return simulateDelay(devices[idx])
     }
 
-    return request<Device>(`/devices/${deviceId}`, {
-      method: 'DELETE',
+    return del<Device>(`/devices/${deviceId}`, {
       body: JSON.stringify({ reason }),
     })
   },

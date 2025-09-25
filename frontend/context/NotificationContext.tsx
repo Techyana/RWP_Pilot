@@ -12,6 +12,8 @@ import React, {
 import { Notification } from '../types';
 import { api } from '../services/api';
 import { useAuth } from './AuthContext';
+import { io, Socket } from 'socket.io-client';
+import { API_BASE } from '../services/http';
 
 interface NotificationContextType {
   notifications: Notification[];
@@ -26,10 +28,13 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
+  // Fetch notifications (fallback for initial load or if websocket fails)
   const fetchNotifications = useCallback(async () => {
     if (!user) {
       setNotifications([]);
@@ -37,7 +42,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
     setIsLoading(true);
     try {
-      const data = await api.getNotifications(user.id);
+      const data = await api.notification.getNotifications(user.id);
       setNotifications(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to fetch notifications', error);
@@ -46,50 +51,86 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
   }, [user]);
 
-  // Start polling only when logged in
+  // Socket.io connection for live notifications
   useEffect(() => {
     if (!user) {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
       if (pollingRef.current) clearInterval(pollingRef.current);
       return;
     }
+
+    // Connect to Socket.io server
+    const socket = io(`${API_BASE}/notifications`, {
+      query: { userId: user.id },
+      withCredentials: true,
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setIsLoading(false);
+    });
+    socket.on('notification', (data: Notification) => {
+      setNotifications((prev) => [data, ...prev]);
+    });
+    socket.on('notifications', (data: Notification[]) => {
+      setNotifications(Array.isArray(data) ? data : []);
+    });
+    socket.on('connect_error', (err) => {
+      console.error('Socket.io connect error', err);
+      // fallback to polling
+      fetchNotifications();
+      pollingRef.current = setInterval(fetchNotifications, 30000);
+    });
+    socket.on('disconnect', () => {
+      // fallback to polling
+      fetchNotifications();
+      pollingRef.current = setInterval(fetchNotifications, 30000);
+    });
+
+    // Initial fetch for existing notifications
     fetchNotifications();
-    pollingRef.current = setInterval(fetchNotifications, 30000);
+
     return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [fetchNotifications, user]);
+  }, [user, fetchNotifications]);
 
   const unreadCount = useMemo(
     () => notifications.filter((n) => !n.isRead).length,
     [notifications]
   );
 
+
   const markOneAsRead = async (notificationId: string) => {
     const target = notifications.find((n) => n.id === notificationId);
     if (!target || target.isRead) return;
-
     setNotifications((prev) =>
       prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
     );
-
     try {
-      await api.markNotificationAsRead(notificationId);
+      await api.notification.markNotificationAsRead(notificationId);
     } catch (error) {
       console.error('Failed to mark notification as read', error);
-      // revert on error
       setNotifications((prev) =>
         prev.map((n) => (n.id === notificationId ? { ...n, isRead: false } : n))
       );
     }
   };
 
+
   const markAllAsRead = async () => {
     if (!user || unreadCount === 0) return;
     const original = [...notifications];
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-
     try {
-      await api.markAllNotificationsAsRead(user.id);
+      await api.notification.markAllNotificationsAsRead(user.id);
     } catch (error) {
       console.error('Failed to mark all notifications as read', error);
       setNotifications(original); // revert

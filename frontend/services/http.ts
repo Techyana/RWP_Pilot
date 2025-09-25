@@ -1,60 +1,94 @@
-// services/http.ts
+// src/services/http.ts
+
 export class HttpError extends Error {
-  status: number;
-  body?: any;
-  constructor(message: string, status: number, body?: any) {
-    super(message);
-    this.status = status;
-    this.body = body;
+  public status: number
+  public body?: unknown
+
+  constructor(message: string, status: number, body?: unknown) {
+    super(message)
+    this.name = 'HttpError'
+    this.status = status
+    this.body = body
   }
 }
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE || 'https://vps.ricohworkshopportal.co.za';
+// Trim any trailing slash so you never get double “//” in URLs
+const rawBase = import.meta.env.VITE_API_BASE as string | undefined
+export const API_BASE = rawBase?.replace(/\/+$/, '') 
+  ?? 'https://vps.ricohworkshopportal.co.za'
 
-/*
- * Generic request wrapper for cookie-based sessions.
- * Always sends credentials so the browser includes the session cookie.
+/** 
+ * Low-level wrapper around fetch that:
+//   • prefixes your path with API_BASE
+//   • always sends cookies
+//   • sets JSON headers when needed
+//   • parses JSON/text intelligently
+//   • throws HttpError on non-ok
  */
-export async function request<T>(
+async function request<T>(
   path: string,
-  init: RequestInit = {}
+  config: RequestInit = {}
 ): Promise<T> {
-  const headers = new Headers(init.headers || {});
+  const url = `${API_BASE}${path}`
+  const headers = new Headers(config.headers)
 
-  //Content-Type for JSON bodies (not FormData)
-  if (!headers.has('Content-Type') && init.body && !(init.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json');
+  // if there's a body and it's not FormData, assume JSON
+  if (
+    config.body &&
+    !(config.body instanceof FormData) &&
+    !headers.has('Content-Type')
+  ) {
+    headers.set('Content-Type', 'application/json')
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
+  const res = await fetch(url, {
+    ...config,
     headers,
     credentials: 'include',
-  });
+  })
 
-  if (!res.ok) {
-    let body: any;
-    try {
-      body = await res.json();
-    } catch {
-      body = await res.text().catch(() => '');
-    }
-    throw new HttpError(
-      body?.message || res.statusText || 'HTTP ${res.status}',
-      res.status,
-      body
-    );
+  // sniff JSON content to decide whether to call res.json()
+  const contentType = res.headers.get('Content-Type') || ''
+  let responseBody: unknown
+
+  if (res.status !== 204 && contentType.includes('application/json')) {
+    responseBody = await res.json().catch(() => undefined)
+  } else {
+    // fallback to text for non-JSON or 204
+    responseBody = await res.text().catch(() => undefined)
   }
 
-  if (res.status === 204) return undefined as unknown as T;
-  return res.json() as Promise<T>;
+  if (!res.ok) {
+    // pull out a “message” if the body has one
+    const msg =
+      typeof responseBody === 'object' &&
+      responseBody !== null &&
+      'message' in (responseBody as any)
+        ? (responseBody as any).message
+        : res.statusText || `HTTP ${res.status}`
+    throw new HttpError(msg, res.status, responseBody)
+  }
+
+  // HTTP 204 No Content → return undefined
+  if (res.status === 204) {
+    return undefined as unknown as T
+  }
+
+  return responseBody as T
 }
 
-//Convenience helpers
-export const get = <T>(path: string) => request<T>(path);
-export const post = <T>(path: string, body?: any) =>
-  request<T>(path, { method: 'POST', body: JSON.stringify(body) });
-export const patch = <T>(path: string, body?: any) =>
-  request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
-export const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
+// Convenience helpers; you can still override headers or other init fields
+export const get = <T>(path: string, init?: RequestInit) =>
+  request<T>(path, { ...init, method: 'GET' })
+
+export const post = <T>(path: string, body?: unknown, init?: RequestInit) =>
+  request<T>(path, { ...init, method: 'POST', body: JSON.stringify(body) })
+
+export const put = <T>(path: string, body?: unknown, init?: RequestInit) =>
+  request<T>(path, { ...init, method: 'PUT', body: JSON.stringify(body) })
+
+export const patch = <T>(path: string, body?: unknown, init?: RequestInit) =>
+  request<T>(path, { ...init, method: 'PATCH', body: JSON.stringify(body) })
+
+export const del = <T>(path: string, init?: RequestInit) =>
+  request<T>(path, { ...init, method: 'DELETE' })

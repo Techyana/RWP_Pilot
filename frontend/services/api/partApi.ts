@@ -1,133 +1,61 @@
-// services/api/partApi.ts
+// src/services/api/partApi.ts
 
-import { request } from '../http'
-import { parts, simulateDelay } from '../mockDb'
+import { get, post, del } from '../http'
 import type {
   Part,
   ClaimDetails,
   ReturnDetails,
   RemoveDetails,
   User,
+  PartTransaction,
 } from '../../types'
-import { PartStatus } from '../../types'
-
-const live = import.meta.env.VITE_API_MODE === 'live'
 
 export const partApi = {
-  /** GET /parts?t=… */
-  getParts: async (): Promise<Part[]> => {
-    if (!live) return simulateDelay(parts)
-    return request<Part[]>(`/parts?t=${Date.now()}`, {
-      cache: 'no-store',
-    })
-  },
+  /** GET /parts?t=… — fetch all parts (no-store to bypass any HTTP cache) */
+  getParts: (): Promise<Part[]> =>
+    get<Part[]>(`/parts?t=${Date.now()}`, { cache: 'no-store' }),
 
-  /** POST /parts */
-  addPart: async (
-    data: Omit<Part, 'id' | 'status' | 'availableQuantity' | 'claimedBy' | 'claimedAt'>
-  ): Promise<Part> => {
-    if (!live) {
-      const newPart: Part = {
-        ...data,
-        id: `part-${Date.now()}`,
-        status: PartStatus.AVAILABLE,
-        availableQuantity: data.quantity,
-      }
-      parts.unshift(newPart)
-      return simulateDelay(newPart)
-    }
-    return request<Part>('/parts', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
-  },
+  /** POST /parts — create a new part */
+  addPart: (
+    data: Omit<
+      Part,
+      | 'id'
+      | 'status'
+      | 'claimedByName'
+      | 'claimedAt'
+      | 'requestedByName'
+      | 'requestedAtTimestamp'
+      | 'availableQuantity'
+    >
+  ): Promise<Part> => post<Part>('/parts', data),
 
-  /** POST /parts/:id/claim */
-  claimPart: async (
-    opts: ClaimDetails,
-    user: User
-  ): Promise<Part> => {
-    if (!live) {
-      const idx = parts.findIndex((p) => p.id === opts.partId)
-      if (idx === -1) throw new Error('Part not found')
-      if (parts[idx].status !== PartStatus.AVAILABLE)
-        throw new Error('Part not available')
+  /** POST /parts/:id/claim — claim one unit */
+  claimPart: (opts: ClaimDetails, user: User): Promise<Part> =>
+    post<Part>(`/parts/${opts.partId}/claim`, {}),
 
-      parts[idx] = {
-        ...parts[idx],
-        status: PartStatus.PENDING_COLLECTION,
-        claimedBy: user,
-        claimedAt: new Date().toISOString(),
-      }
-      return simulateDelay(parts[idx])
-    }
-    return request<Part>(`/parts/${opts.partId}/claim`, {
-      method: 'POST',
-    })
-  },
+  /** POST /parts/:id/request — request part order */
+  requestPart: (opts: ClaimDetails, user: User): Promise<Part> =>
+    post<Part>(`/parts/${opts.partId}/request`, {}),
 
-  /** POST /parts/:id/request */
-  requestPart: async (
-    opts: ClaimDetails,
-    user: User
-  ): Promise<Part> => {
-    if (!live) {
-      const idx = parts.findIndex((p) => p.id === opts.partId)
-      if (idx === -1) throw new Error('Part not found')
-      if (parts[idx].status !== PartStatus.AVAILABLE)
-        throw new Error('Cannot request non-available part')
+  /** POST /parts/:id/collect — mark claimed part as collected */
+  collectPart: (opts: ClaimDetails, user: User): Promise<Part> =>
+    post<Part>(`/parts/${opts.partId}/collect`, {}),
 
-      parts[idx] = {
-        ...parts[idx],
-        status: PartStatus.REQUESTED,
-        requestedByUserId: user.id,
-        requestedByUserEmail: user.email,
-        requestedAtTimestamp: new Date().toISOString(),
-      }
-      return simulateDelay(parts[idx])
-    }
-    return request<Part>(`/parts/${opts.partId}/request`, {
-      method: 'POST',
-    })
-  },
+  /** GET /parts/transactions/recent?hours=… — last N hrs of claims & requests */
+  getRecentTransactions: (hours = 12): Promise<PartTransaction[]> =>
+    get<PartTransaction[]>(`/parts/transactions/recent?hours=${hours}`),
 
-  /** DELETE /parts/:id */
-  removePart: async (
-    opts: RemoveDetails,
-    user: User
-  ): Promise<void> => {
-    if (!live) {
-      const idx = parts.findIndex((p) => p.id === opts.partId)
-      if (idx === -1) throw new Error('Part not found')
-      parts.splice(idx, 1)
-      return simulateDelay(undefined)
-    }
-    await request<void>(`/parts/${opts.partId}`, {
-      method: 'DELETE',
+  /** GET /parts/transactions/collected?hours=… — last N hrs of collections */
+  getRecentCollections: (hours = 12): Promise<PartTransaction[]> =>
+    get<PartTransaction[]>(`/parts/transactions/collected?hours=${hours}`),
+
+  /** DELETE /parts/:id — remove a part with a reason */
+  removePart: (opts: RemoveDetails): Promise<void> =>
+    del<void>(`/parts/${opts.partId}`, {
       body: JSON.stringify({ reason: opts.reason }),
-    })
-  },
+    }),
 
-  /** POST /parts/:id/return */
-  returnPart: async (
-    opts: ReturnDetails,
-    user: User
-  ): Promise<Part> => {
-    if (!live) {
-      const idx = parts.findIndex((p) => p.id === opts.partId)
-      if (idx === -1) throw new Error('Part not found')
-
-      parts[idx] = {
-        ...parts[idx],
-        status: PartStatus.AVAILABLE,
-        claimedBy: undefined,
-        claimedAt: undefined,
-      }
-      return simulateDelay(parts[idx])
-    }
-    return request<Part>(`/parts/${opts.partId}/return`, {
-      method: 'POST',
-      body: JSON.stringify({ reason: opts.reason }),
-    })
-  },
+  /** POST /parts/:id/return — return a previously claimed unit */
+  returnPart: (opts: ReturnDetails): Promise<Part> =>
+    post<Part>(`/parts/${opts.partId}/return`, { reason: opts.reason }),
 }

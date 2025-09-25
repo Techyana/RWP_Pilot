@@ -1,4 +1,6 @@
-import React from 'react';
+// src/components/shared/Icon.tsx
+
+import React from 'react'
 import {
   LogIn,
   LogOut,
@@ -29,7 +31,8 @@ import {
   ExternalLink,
   Trash2,
   Info,
-} from 'lucide-react';
+  Eye,
+} from 'lucide-react'
 
 export type IconName =
   | 'login'
@@ -42,9 +45,12 @@ export type IconName =
   | 'down'
   | 'right'
   | 'claim'
+  | 'clipboard'
   | 'reports'
   | 'info'
+  | 'info-circle'
   | 'success'
+  | 'collected'
   | 'error'
   | 'comment'
   | 'send'
@@ -60,10 +66,12 @@ export type IconName =
   | 'upload'
   | 'external-link'
   | 'trash'
-  | 'info-circle';
+  | 'view'
+  | 'check'
 
 interface IconProps extends React.SVGProps<SVGSVGElement> {
-  name: IconName;
+  name: IconName
+  className?: string
 }
 
 const iconMap: Record<IconName, React.ElementType> = {
@@ -77,9 +85,12 @@ const iconMap: Record<IconName, React.ElementType> = {
   down: ChevronDown,
   right: ChevronRight,
   claim: ClipboardList,
+  clipboard: ClipboardList,
   reports: BarChart2,
   info: AlertCircle,
+  'info-circle': Info,
   success: CheckCircle,
+  collected: CheckCircle,
   error: XCircle,
   comment: MessageSquare,
   send: Send,
@@ -95,11 +106,14 @@ const iconMap: Record<IconName, React.ElementType> = {
   upload: Upload,
   'external-link': ExternalLink,
   trash: Trash2,
-  'info-circle': Info,
-};
+  view: Eye,
+  check: CheckCircle,
+}
 
-export const Icon: React.FC<IconProps> = ({ name, className, ...props }) => {
-  const LucideIcon = iconMap[name];
-  if (!LucideIcon) return null;
-  return <LucideIcon className={className} {...props} />;
-};
+export const Icon: React.FC<IconProps> = ({ name, className = 'h-5 w-5', ...props }) => {
+  const LucideIcon = iconMap[name]
+  if (!LucideIcon) return null
+  return <LucideIcon className={className} {...props} />
+}
+
+export default Icon

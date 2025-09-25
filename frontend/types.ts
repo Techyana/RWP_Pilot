@@ -8,20 +8,21 @@ export enum Role {
 
 export enum PartStatus {
   AVAILABLE = 'AVAILABLE',
-  USED = 'USED',
-  REQUESTED = 'REQUESTED',
   PENDING_COLLECTION = 'PENDING_COLLECTION',
+  CLAIMED = 'CLAIMED',
+  COLLECTED = 'COLLECTED',
+  UNAVAILABLE = 'UNAVAILABLE',
 }
 
 export enum DeviceStatus {
-  APPROVED_FOR_DISPOSAL = 'Approved for Disposal',
-  REMOVED = 'Removed',
+  APPROVED_FOR_DISPOSAL = 'APPROVED_FOR_DISPOSAL',
+  REMOVED = 'REMOVED',
 }
 
 export enum DeviceCondition {
-  GOOD = 'Good',
-  FAIR = 'Fair',
-  POOR = 'Poor',
+  GOOD = 'GOOD',
+  FAIR = 'FAIR',
+  POOR = 'POOR',
 }
 
 export interface User {
@@ -50,13 +51,14 @@ export interface Part {
   status: PartStatus
 
   // Claim tracking (reserved parts)
-  claimedBy?: User
-  claimedAt?: string
+  claimedByName?: string | null
+  claimedAt?: string | Date | null
 
   // Request tracking (order requests)
-  requestedByUserId?: string
-  requestedByUserEmail?: string
-  requestedAtTimestamp?: string
+  requestedByName?: string | null
+  requestedAtTimestamp?: string | Date
+  createdAtTimestamp?: string | Date
+  updatedAtTimestamp?: string | Date
 
   // Inventory counts
   quantity: number
@@ -64,6 +66,39 @@ export interface Part {
 
   // Compatibility
   forDeviceModels: string[]
+
+  // EngineerDashboard compatibility fields
+  client?: string // Added for dashboard compatibility
+  deviceSerial?: string
+  claimedBy?: string
+  collected?: boolean
+}
+// EngineerDashboard types for workflow compatibility
+
+export interface Claim {
+  id: string
+  partId: string
+  engineerId: string
+  claimedAt: string
+}
+
+export interface PartRequest {
+  id?: string
+  partName: string
+  partNumber: string
+  quantity: number
+  client: string
+  deviceSerial: string
+  engineerId?: string
+  requestedAt?: string
+}
+
+export interface Transaction {
+  id: string
+  partId: string
+  engineerId: string
+  type: 'claim' | 'request' | 'collect'
+  timestamp: string
 }
 
 export interface ClaimDetails {
@@ -107,10 +142,10 @@ export interface ActivityLog {
 }
 
 export enum TonerColor {
-  BLACK = 'Black',
-  CYAN = 'Cyan',
-  MAGENTA = 'Magenta',
-  YELLOW = 'Yellow',
+  BLACK = 'black',
+  CYAN = 'cyan',
+  MAGENTA = 'magenta',
+  YELLOW = 'yellow',
 }
 
 export interface Toner {
@@ -124,8 +159,10 @@ export interface Toner {
 }
 
 export enum NotificationType {
-  PART_ARRIVAL = 'PART_ARRIVAL',
   PART_AVAILABLE = 'PART_AVAILABLE',
+  PART_REMOVED = 'PART_REMOVED',
+  PART_CLAIMED = 'PART_CLAIMED',
+  PART_COLLECTED = 'PART_COLLECTED',
   GENERAL = 'GENERAL',
 }
 
@@ -140,4 +177,25 @@ export interface Notification {
     partId?: string
     shipmentNumber?: string
   }
+}
+
+// ----------------------------------------------------------------
+// Transactions for parts (claims, requests, collections, returns)
+// ----------------------------------------------------------------
+
+export enum PartTransactionType {
+  CLAIM   = 'CLAIM',
+  REQUEST = 'REQUEST',
+  RETURN  = 'RETURN',
+  COLLECT = 'COLLECT',
+  ADD    = 'ADD',
+}
+
+export interface PartTransaction {
+  id: string
+  part: Part
+  type: PartTransactionType
+  user: { id: string; name: string }
+  quantityDelta: number
+  createdAt: string
 }
