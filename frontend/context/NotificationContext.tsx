@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useCallback,
   useRef,
+  useTransition,
 } from 'react';
 import { Notification } from '../types';
 import { api } from '../services/api';
@@ -31,6 +32,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
@@ -43,13 +45,15 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     setIsLoading(true);
     try {
       const data = await api.notification.getNotifications(user.id);
-      setNotifications(Array.isArray(data) ? data : []);
+      startTransition(() => {
+        setNotifications(Array.isArray(data) ? data : []);
+      });
     } catch (error) {
       console.error('Failed to fetch notifications', error);
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, startTransition]);
 
   // Socket.io connection for live notifications
   useEffect(() => {
@@ -72,7 +76,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     socket.on('connect', () => {
       setIsLoading(false);
     });
+
     socket.on('notification', (data: Notification) => {
+      // Only update notification state, do not trigger inventory reloads
       setNotifications((prev) => [data, ...prev]);
     });
     socket.on('notifications', (data: Notification[]) => {
@@ -80,17 +86,17 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     });
     socket.on('connect_error', (err) => {
       console.error('Socket.io connect error', err);
-      // fallback to polling
-      fetchNotifications();
+      // fallback to polling for notifications only
+      if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(fetchNotifications, 30000);
     });
     socket.on('disconnect', () => {
-      // fallback to polling
-      fetchNotifications();
+      // fallback to polling for notifications only
+      if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(fetchNotifications, 30000);
     });
 
-    // Initial fetch for existing notifications
+    // Initial fetch for notifications only
     fetchNotifications();
 
     return () => {
@@ -133,7 +139,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       await api.notification.markAllNotificationsAsRead(user.id);
     } catch (error) {
       console.error('Failed to mark all notifications as read', error);
-      setNotifications(original); // revert
+      setNotifications(original);
     }
   };
 
@@ -142,7 +148,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       value={{
         notifications,
         unreadCount,
-        isLoading,
+        isLoading: isLoading || isPending,
         fetchNotifications,
         markOneAsRead,
         markAllAsRead,

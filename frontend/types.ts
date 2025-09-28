@@ -53,6 +53,7 @@ export interface Part {
   // Claim tracking (reserved parts)
   claimedByName?: string | null
   claimedAt?: string | Date | null
+  collectedAt?: string | Date | null
 
   // Request tracking (order requests)
   requestedByName?: string | null
@@ -73,7 +74,6 @@ export interface Part {
   claimedBy?: string
   collected?: boolean
 }
-// EngineerDashboard types for workflow compatibility
 
 export interface Claim {
   id: string
@@ -149,13 +149,27 @@ export enum TonerColor {
 }
 
 export interface Toner {
-  id: string
-  model: string
-  edpCode: string
-  color: TonerColor
-  yield: number
-  stock: number
-  forDeviceModels: string[]
+  id: string;
+  model: string;
+  edpCode: string;
+  color: TonerColor;
+  yield?: number;
+  stock: number;
+  forDeviceModels?: string[];
+  from: string;
+
+  // Claim/collection tracking
+  claimedByName?: string | null;
+  claimedAt?: string | Date | null;
+  collected?: boolean;
+  collectedByName?: string | null;
+  collectedAt?: string | Date | null;
+  requestedByName?: string | null;
+  requestedAtTimestamp?: string | Date;
+  // Add missing fields for compatibility with InventoryList
+  partNumber?: string;
+  status?: PartStatus;
+  serialNumber?: string;
 }
 
 export enum NotificationType {
@@ -195,6 +209,19 @@ export interface PartTransaction {
   id: string
   part: Part
   type: PartTransactionType
+  user: { id: string; name: string }
+  quantityDelta: number
+  createdAt: string
+}
+
+// ----------------------------------------------------------------
+// Transactions for toners (claims, requests, collections, returns)
+// ----------------------------------------------------------------
+
+export interface TonerTransaction {
+  id: string
+  toner: Toner
+  type: PartTransactionType // Reuse same enum for simplicity
   user: { id: string; name: string }
   quantityDelta: number
   createdAt: string

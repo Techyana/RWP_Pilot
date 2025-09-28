@@ -1,34 +1,51 @@
-// src/services/api/tonerApi.ts
-
-import { get, post } from '../http'
-import { toners, simulateDelay } from '../mockDb'
-import type { Toner } from '../../types'
-
-const live = import.meta.env.VITE_API_MODE === 'live'
+import { get, post, patch } from '../http'
+import type {
+  Toner,
+  User,
+  TonerTransaction,
+} from '../../types'
 
 export const tonerApi = {
-  /**
-   * Fetch all toners
-   */
+  /** GET /toners — fetch all toners */
   getToners: (): Promise<Toner[]> => {
-    if (!live) {
-      return simulateDelay(toners)
-    }
-    return get<Toner[]>('/toners')
+    return get<Toner[]>(`/toners?t=${Date.now()}`, { cache: 'no-store' })
   },
 
-  /**
-   * Add a new toner
-   */
-  addToner: (tonerData: Omit<Toner, 'id'>): Promise<Toner> => {
-    if (!live) {
-      const newToner: Toner = {
-        ...tonerData,
-        id: `toner-${Date.now()}`,
-      }
-      toners.unshift(newToner)
-      return simulateDelay(newToner)
-    }
-    return post<Toner>('/toners', tonerData)
+  /** POST /toners — add a new toner */
+  addToner: (
+    data: Omit<Toner, 'id' | 'claimedByName' | 'claimedAt' | 'collected' | 'collectedByName' | 'collectedAt' | 'requestedByName' | 'requestedAtTimestamp'>
+  ): Promise<Toner> => {
+    return post<Toner>('/toners', data)
+  },
+
+  /** PATCH /toners/:id/claim — claim one unit */
+  claimToner: (tonerId: string, user: User, clientName: string, serialNumber: string): Promise<Toner> => {
+    return patch<Toner>(`/toners/${tonerId}/claim`, {
+      claimedBy: user.name,
+      clientName,
+      serialNumber,
+    });
+  },
+
+  /** POST /toners/:id/request — request toner order (not implemented in backend) */
+  requestToner: (tonerId: string, user: User): Promise<Toner> => {
+    return post<Toner>(`/toners/${tonerId}/request`, {});
+  },
+
+  /** PATCH /toners/:id/collect — mark claimed toner as collected */
+  collectToner: (tonerId: string, user: User): Promise<Toner> => {
+    return patch<Toner>(`/toners/${tonerId}/collect`, {
+      collectedBy: user.name,
+    });
+  },
+
+  /** GET /toners/transactions/recent?hours=… — last N hrs of claims & requests */
+  getRecentTransactions: (hours = 12): Promise<TonerTransaction[]> => {
+    return get<TonerTransaction[]>(`/toners/transactions/recent?hours=${hours}`)
+  },
+
+  /** GET /toners/transactions/collected?hours=… — last N hrs of collections */
+  getRecentCollections: (hours = 12): Promise<TonerTransaction[]> => {
+    return get<TonerTransaction[]>(`/toners/transactions/collected?hours=${hours}`)
   },
 }
